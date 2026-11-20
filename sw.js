@@ -103,19 +103,24 @@ self.addEventListener('fetch', (event) => {
   if (cleanPath.includes('/apps/')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
+        const appScopeMatch = cleanPath.match(/^(.*?\/apps\/[^/]+\/)/);
+        const appScope = appScopeMatch ? appScopeMatch[1] : null;
+        const lockRes = appScope ? await cache.match(`${url.origin}${appScope}manifest.lock`) : null;
+        const manifestBlocked = lockRes && (await lockRes.text()).trim().toLowerCase() === 'true';
+
         // Check if this request belongs to an active DEVELOPER live-broadcast folder
-        for (const [appScope, devEntry] of devDirectoryHandles.entries()) {
-          if (cleanPath.startsWith(appScope)) {
+        for (const [devScope, devEntry] of devDirectoryHandles.entries()) {
+          if (cleanPath.startsWith(devScope)) {
             // Verify dev.file in Cache Storage is explicitly set to "true"
-            const baseScope = appScope.replace(/apps\/[^/]+\/$/, '');
+            const baseScope = devScope.replace(/apps\/[^/]+\/$/, '');
             const rootDevRes = await cache.match(`${url.origin}${baseScope}dev.file`);
-            const appDevRes = await cache.match(`${url.origin}${appScope}dev.file`);
+            const appDevRes = await cache.match(`${url.origin}${devScope}dev.file`);
             const rootTrue = rootDevRes && (await rootDevRes.text()).trim().toLowerCase() === 'true';
             const appTrue = appDevRes && (await appDevRes.text()).trim().toLowerCase() === 'true';
 
-            if ((rootTrue || appTrue) && !cleanPath.endsWith('manifest.json')) {
+            if ((rootTrue || appTrue) && !(cleanPath.endsWith('manifest.json') && manifestBlocked)) {
               try {
-                const relPath = cleanPath.slice(appScope.length);
+                const relPath = cleanPath.slice(devScope.length);
                 return await serveFromDevHandle(devEntry, relPath);
               } catch (err) {
                 // Fall back to cached files if not found in live folder
