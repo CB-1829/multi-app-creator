@@ -4,196 +4,592 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Local HTML to PWA Installer</title>
-  <!-- JSZip for extracting app.zip in FULL mode -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    body { font-family: sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #0f172a; }
-    label { display: block; margin-top: 1rem; font-weight: bold; }
-    input[type="text"], input[type="file"], input[type="color"], textarea, select, button {
-      width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; font-size: 15px; border-radius: 6px; border: 1px solid #cbd5e1;
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --edits: #059669;
+      --dev: #7c3aed;
+      --danger: #dc2626;
     }
-    textarea { font-family: monospace; min-height: 130px; }
-    button { margin-top: 1.1rem; background: #2563eb; color: white; border: none; cursor: pointer; font-weight: bold; }
-    button:hover { background: #1d4ed8; }
-    button.danger { background: #dc2626; margin-top: 0.75rem; }
-    button.danger:hover { background: #b91c1c; }
-    button.secondary { background: #0f172a; margin-top: 0.5rem; }
-    button.secondary:hover { background: #1e293b; }
 
-    /* Mode Selector Bar */
-    .mode-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
-    .mode-bar.dev-unlocked { grid-template-columns: repeat(4, 1fr); }
-    .mode-btn {
-      margin-top: 0; padding: 10px 6px; background: #e2e8f0; color: #334155;
-      border: 2px solid #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; text-align: center;
+    * {
+      box-sizing: border-box;
     }
-    .mode-btn.active { background: #2563eb; color: #ffffff; border-color: #1d4ed8; }
-    .mode-btn.dev-active { background: #7c3aed; color: #ffffff; border-color: #6d28d9; }
-    .mode-btn.edits-active { background: #059669; color: #ffffff; border-color: #047857; }
+
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem 3rem;
+      line-height: 1.5;
+    }
+
+    h1 {
+      margin: 0 0 1rem;
+      font-size: 1.75rem;
+    }
+
+    h3 {
+      margin: 0 0 0.65rem;
+      font-size: 1.05rem;
+    }
+
+    label {
+      display: block;
+      margin-top: 0.85rem;
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+
+    input[type="text"],
+    input[type="file"],
+    input[type="color"],
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    textarea {
+      min-height: 130px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    button {
+      width: 100%;
+      padding: 11px 16px;
+      margin-top: 1rem;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button:active {
+      transform: scale(0.99);
+    }
+
+    button.secondary {
+      background: #334155;
+    }
+
+    button.secondary:hover {
+      background: #1e293b;
+    }
+
+    button.danger {
+      background: var(--danger);
+      margin-top: 0.65rem;
+    }
+
+    button.danger:hover {
+      background: #b91c1c;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.15rem;
+      margin-top: 1rem;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+
+    .mode-grid.dev-unlocked {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .mode-btn {
+      margin-top: 0;
+      padding: 10px 8px;
+      background: #e2e8f0;
+      color: #1e293b;
+      border: 2px solid transparent;
+    }
+
+    .mode-btn:hover {
+      background: #cbd5e1;
+      color: #0f172a;
+    }
+
+    .mode-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .mode-btn.edits-active {
+      background: var(--edits);
+      color: #ffffff;
+      border-color: #047857;
+    }
+
+    .mode-btn.dev-active {
+      background: var(--dev);
+      color: #ffffff;
+      border-color: #5b21b6;
+    }
 
     .active-mode-banner {
-      margin-top: 10px; padding: 10px 14px; background: #0f172a; color: #38bdf8;
-      border-radius: 8px; font-family: monospace; font-size: 15px; font-weight: bold;
-      display: flex; justify-content: space-between; align-items: center;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-top: 0.85rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
     }
-    .panel {
-      margin-top: 1rem; padding: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px;
+
+    .sub-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
     }
-    .panel h3 { margin: 0 0 8px 0; font-size: 16px; }
-    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-weight: bold; cursor: pointer; }
-    .checkbox-row input { width: auto; margin: 0; }
-    .sub-tabs { display: flex; gap: 8px; margin-top: 8px; }
-    .sub-tabs button { margin-top: 0; padding: 8px; font-size: 13px; background: #475569; }
-    .sub-tabs button.active { background: #2563eb; }
-    #status { margin-top: 1rem; padding: 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; white-space: pre-wrap; }
-    .hidden { display: none !important; }
+
+    .sub-tabs button {
+      margin-top: 0;
+      padding: 8px 12px;
+      font-size: 13px;
+      background: #e2e8f0;
+      color: #1e293b;
+    }
+
+    .sub-tabs button.active {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    #status {
+      margin-top: 1rem;
+      padding: 12px 14px;
+      background: #e2e8f0;
+      color: #0f172a;
+      border-radius: 8px;
+      font-size: 14px;
+      word-break: break-word;
+    }
+
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
-
   <h1>Local HTML to PWA Installer</h1>
 
-  <!-- 4 Mode Toggle Buttons (DEVELOPER stays completely hidden until dev.file == "true" in Cache) -->
-  <label>Select Mode</label>
-  <div id="modeBar" class="mode-bar">
-    <button type="button" id="btnModeHtml" class="mode-btn active">HTML</button>
-    <button type="button" id="btnModeFull" class="mode-btn">FULL</button>
-    <button type="button" id="btnModeEdits" class="mode-btn">EDITS</button>
-    <button type="button" id="btnModeDev" class="mode-btn hidden">DEVELOPER</button>
-  </div>
-
-  <div class="active-mode-banner">
-    <span>ACTIVE MODE: <span id="activeModeLabel">HTML</span></span>
-    <span id="activeModeDesc" style="font-family:sans-serif;font-size:12px;color:#cbd5e1;">Single .html file</span>
-  </div>
-
-  <!-- Target Custom URL ID (Always visible so we can check its manifest lock & dev.file status) -->
   <div class="panel">
-    <h3>Target App ID & Status</h3>
-    <label>Custom URL ID (e.g., calculator, game1)</label>
-    <input type="text" id="customId" placeholder="pwa-tester-v07" required>
-    <div id="idLockNotice" style="font-size:13px; margin-top:6px; color:#475569;"></div>
+    <h3>Select Mode</h3>
+    <div id="modeBar" class="mode-grid">
+      <button type="button" id="btnModeHtml" class="mode-btn active">HTML</button>
+      <button type="button" id="btnModeFull" class="mode-btn">FULL</button>
+      <button type="button" id="btnModeEdits" class="mode-btn">EDITS</button>
+      <button type="button" id="btnModeDev" class="mode-btn hidden">DEVELOPER</button>
+    </div>
+
+    <div class="active-mode-banner">
+      <span>ACTIVE MODE: <span id="activeModeLabel">HTML</span></span>
+      <span id="activeModeDesc" style="font-family:sans-serif;font-size:12px;color:#cbd5e1;">Single .html file</span>
+    </div>
   </div>
 
-  <!-- 1. Source Upload Section (Switches between HTML and FULL) -->
+  <!-- 1. Source Upload Section (Switches between HTML and FULL; index.html is NOT required) -->
   <div id="htmlSourceSection" class="panel">
     <h3>1. Upload HTML File (.html)</h3>
     <input type="file" id="htmlFile" accept=".html,text/html">
   </div>
 
   <div id="fullSourceSection" class="panel hidden">
-    <h3>1. Upload Full PWA Package (app.zip or app/ folder)</h3>
+    <h3>1. Upload Full PWA Package (app.zip or app/ folder — no index.html required)</h3>
     <div class="sub-tabs">
       <button type="button" id="tabZip" class="active">Upload app.zip</button>
       <button type="button" id="tabFolder">Upload app/ Folder</button>
     </div>
     <div id="zipUploadBox">
-      <label>Select <code>app.zip</code> (must contain <code>index.html</code>)</label>
+      <label>Select <code>app.zip</code> (<code>index.html</code> not required)</label>
       <input type="file" id="zipFile" accept=".zip,application/zip">
     </div>
     <div id="folderUploadBox" class="hidden">
-      <label>Select <code>app/</code> Directory (must contain <code>index.html</code>)</label>
+      <label>Select <code>app/</code> Directory (<code>index.html</code> not required)</label>
       <input type="file" id="folderFiles" webkitdirectory directory multiple>
     </div>
   </div>
 
-  <!-- 2. Core PWA Details (Hidden when selected app blocks manifest edits OR when editing an existing app with EDITS off) -->
-  <div id="coreDetailsPanel" class="panel">
-    <h3>2. PWA Identity & Details</h3>
+  <!-- Merged App ID & PWA Identity Panel: ONLY shown when EDITS is toggled ON AND the PWA does NOT block edits -->
+  <div id="editsIdentityPanel" class="panel hidden">
+    <h3>App ID & PWA Identity (EDITS Mode)</h3>
+    <label>Custom URL ID (e.g., calculator, game1)</label>
+    <input type="text" id="customId" placeholder="pwa-tester-v07">
+    <div id="idLockNotice" style="font-size:13px; margin-top:6px; color:#475569;"></div>
+
     <label>PWA Full Name</label>
-    <input type="text" id="appName" placeholder="My Custom PWA" required>
+    <input type="text" id="appName" placeholder="My Custom PWA">
 
     <label>PWA Short Name</label>
-    <input type="text" id="shortName" placeholder="CustomPWA" required>
+    <input type="text" id="shortName" placeholder="CustomPWA">
 
     <label>Theme Color</label>
     <input type="color" id="themeColor" value="#2563eb">
   </div>
 
-  <!-- 3. Manifest Creation & Blocking (Available in ALL modes when creating or unblocked) -->
-  <div id="manifestProtectionPanel" class="panel">
-    <h3>3. Manifest Source & Protection (All Modes)</h3>
-    <label>Manifest Mode</label>
-    <select id="manifestSourceSelect">
-      <option value="auto">Auto-Generate Manifest from Fields Above</option>
-      <option value="custom">Create / Paste Custom manifest.json</option>
-    </select>
-
-    <div id="customManifestBox" class="hidden">
-      <label>Custom <code>manifest.json</code> Content (or upload a .json file below)</label>
-      <input type="file" id="customManifestFile" accept=".json,.webmanifest,application/json">
-      <textarea id="customManifestText" placeholder='{"name": "Custom App", "short_name": "Custom", "display": "standalone"}'></textarea>
-    </div>
-
-    <label class="checkbox-row">
-      <input type="checkbox" id="blockManifestCheckbox">
-      <span>Block Future Manifest Edits (Locks manifest.json for this PWA ID)</span>
-    </label>
-  </div>
-
-  <!-- 4. EDITS Mode Panel (Edit existing manifest.json unless blocked) -->
+  <!-- EDITS Mode Panel (Edit existing manifest.json unless blocked by the PWA) -->
   <div id="editsPanel" class="panel hidden">
-    <h3>4. EDITS Mode — Modify Cached Manifest</h3>
+    <h3>EDITS Mode — Modify Cached Manifest</h3>
     <p style="font-size:13px;margin:0 0 8px;color:#475569;">
-      Load an existing PWA's <code>manifest.json</code> by its Custom URL ID to inspect or edit it (blocked if locked).
+      Load an existing PWA's <code>manifest.json</code> by its Custom URL ID to inspect or edit it (blocked if the PWA blocks edits).
     </p>
     <button type="button" id="loadManifestBtn" class="secondary">Load Existing Manifest for Custom ID</button>
     <label>Cached <code>manifest.json</code></label>
     <textarea id="editManifestText" placeholder="Click 'Load Existing Manifest' above..."></textarea>
-    <label class="checkbox-row">
-      <input type="checkbox" id="editBlockManifestCheckbox">
-      <span>Lock / Block Further Manifest Edits on Save</span>
-    </label>
     <button type="button" id="saveEditedManifestBtn" style="background:#059669;">Save Edited Manifest</button>
   </div>
 
-  <!-- 5. DEVELOPER Mode Panel (Only visible after dev.file is set to "true" in Cache & DEVELOPER button is toggled) -->
+  <!-- DEVELOPER Mode Panel (Replaces file upload when dev.file === "true" and DEVELOPER button is active) -->
   <div id="developerPanel" class="panel hidden">
-    <h3>5. DEVELOPER Mode — Live Folder Broadcast</h3>
+    <h3>DEVELOPER Mode — Live Folder Broadcast</h3>
     <p style="font-size:13px;margin:0 0 8px;color:#475569;">
-      <code>dev.file</code> is verified as <strong>true</strong> in Cache Storage (and blocked from being accessed inside the app).
-      Click below to select a local device folder and broadcast it live to your PWA.
+      <code>dev.file</code> is verified as <code>true</code> in Cache Storage (and blocked inside apps). Select a local device folder to broadcast live to your PWA (replaces file uploads; no <code>index.html</code> required).
     </p>
     <button type="button" id="broadcastFolderBtn" style="background:#7c3aed;">Broadcast Device Folder to App</button>
   </div>
 
-  <button id="saveBtn">Save Locally & Open App to Install</button>
-  <button id="resetBtn" class="danger">Clear All Cache & Reset Service Worker</button>
+  <button type="button" id="saveBtn">Save Locally & Open App to Install</button>
+  <button type="button" id="resetBtn" class="danger">Clear All Cache & Reset Service Worker</button>
 
   <div id="status">Starting Service Worker...</div>
 
   <script>
     const CACHE_NAME = 'local-pwa-builder-v7';
+
     const statusEl = document.getElementById('status');
     const saveBtn = document.getElementById('saveBtn');
     const resetBtn = document.getElementById('resetBtn');
-
-    // State for the mode toggle buttons producing all 8 combinations:
-    // HTML, HTML-EDITS, DEV-HTML, DEV-HTML-EDITS, FULL, FULL-EDITS, DEV-FULL, DEV-FULL-EDITS
-    const modeState = {
-      base: 'HTML', // 'HTML' or 'FULL'
-      edits: false,
-      dev: false,
-      devUnlocked: false,
-      selectedAppExists: false,
-      selectedAppManifestBlocked: false
-    };
-
     const modeBar = document.getElementById('modeBar');
+
     const btnModeHtml = document.getElementById('btnModeHtml');
     const btnModeFull = document.getElementById('btnModeFull');
     const btnModeEdits = document.getElementById('btnModeEdits');
     const btnModeDev = document.getElementById('btnModeDev');
 
+    const tabZip = document.getElementById('tabZip');
+    const tabFolder = document.getElementById('tabFolder');
+    const zipUploadBox = document.getElementById('zipUploadBox');
+    const folderUploadBox = document.getElementById('folderUploadBox');
+
+    const loadManifestBtn = document.getElementById('loadManifestBtn');
+    const saveEditedManifestBtn = document.getElementById('saveEditedManifestBtn');
+    const editManifestText = document.getElementById('editManifestText');
+    const broadcastFolderBtn = document.getElementById('broadcastFolderBtn');
+
+    let fullSubMode = 'zip';
+
+    const modeState = {
+      base: 'HTML', // 'HTML' | 'FULL'
+      edits: false, // toggles EDITS
+      dev: false,   // toggles DEVELOPER when unlocked
+      devUnlocked: false,
+      selectedAppExists: false,
+      selectedAppManifestBlocked: false
+    };
+
+    function getBasePath() {
+      return decodeURI(window.location.pathname).replace(/\/[^/]*$/, '/');
+    }
+
+    function getRootDevFileUrl() {
+      return `${getBasePath()}dev.file`;
+    }
+
+    function getCleanId() {
+      const inputEl = document.getElementById('customId');
+      return inputEl ? inputEl.value.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '') : '';
+    }
+
+    function getOrGenerateId() {
+      const typed = getCleanId();
+      if (typed) return typed;
+      if (!window.__sessionPwaId) {
+        window.__sessionPwaId = `pwa-${Date.now().toString(36)}`;
+      }
+      return window.__sessionPwaId;
+    }
+
+    function getAppPaths(rawId) {
+      const appScope = `${getBasePath()}apps/${rawId}/`;
+      return {
+        appScope,
+        manifestUrl: `${appScope}manifest.json`,
+        lockUrl: `${appScope}manifest.lock`,
+        devFileUrl: `${appScope}dev.file`
+      };
+    }
+
+    function inferContentType(filePath) {
+      const lower = filePath.toLowerCase();
+      if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html; charset=utf-8';
+      if (lower.endsWith('.css')) return 'text/css; charset=utf-8';
+      if (lower.endsWith('.js') || lower.endsWith('.mjs')) return 'application/javascript; charset=utf-8';
+      if (lower.endsWith('.json') || lower.endsWith('.webmanifest')) return 'application/manifest+json; charset=utf-8';
+      if (lower.endsWith('.png')) return 'image/png';
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+      if (lower.endsWith('.gif')) return 'image/gif';
+      if (lower.endsWith('.svg')) return 'image/svg+xml';
+      if (lower.endsWith('.webp')) return 'image/webp';
+      if (lower.endsWith('.ico')) return 'image/x-icon';
+      if (lower.endsWith('.wasm')) return 'application/wasm';
+      if (lower.endsWith('.txt')) return 'text/plain; charset=utf-8';
+      return 'application/octet-stream';
+    }
+
+    function generatePngDataUrl(shortName, themeColor, size = 192) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = themeColor || '#2563eb';
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.round(size * 0.36)}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const badgeText = (shortName || 'PW').slice(0, 2).toUpperCase();
+        ctx.fillText(badgeText, size / 2, size / 2 + 2);
+        return canvas.toDataURL('image/png');
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function buildManifestObject(rawId, appName, shortName, themeColor, appScope) {
+      const icon192 = generatePngDataUrl(shortName, themeColor, 192);
+      const icon512 = generatePngDataUrl(shortName, themeColor, 512);
+      const icons = [];
+      if (icon192) {
+        icons.push({ src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' });
+      }
+      if (icon512) {
+        icons.push({ src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any' });
+      }
+      return {
+        name: appName,
+        short_name: shortName,
+        id: encodeURI(appScope),
+        start_url: encodeURI(appScope),
+        scope: encodeURI(appScope),
+        display: 'standalone',
+        background_color: '#ffffff',
+        theme_color: themeColor,
+        icons
+      };
+    }
+
+    // Detect whether the PWA itself declares a lock/block on manifest edits via its custom code/manifest
+    function detectPwaManifestLock(htmlText = '', manifestObj = null) {
+      const hasMetaLock = /<meta\b[^>]*name=["']?pwa-block-manifest(?:-edits)?["']?[^>]*content=["']?true["']?/i.test(htmlText);
+      const hasScriptLock = /blockManifestEdits\s*[:=]\s*true|data-block-manifest=["']?true["']?|lockManifestEdits\s*\(\s*true\s*\)/i.test(htmlText);
+      const hasManifestLock = Boolean(
+        manifestObj && (
+          manifestObj.block_manifest_edits === true ||
+          manifestObj.lock_manifest === true ||
+          (manifestObj.pwa_controls && manifestObj.pwa_controls.block_manifest_edits === true)
+        )
+      );
+      return hasMetaLock || hasScriptLock || hasManifestLock;
+    }
+
+    async function isManifestBlocked(cache, lockUrl) {
+      const res = await cache.match(`${window.location.origin}${lockUrl}`);
+      if (!res) return false;
+      const txt = (await res.text()).trim().toLowerCase();
+      return txt === 'true';
+    }
+
+    // Initialize dev.file with "false" by default (never overwrites an existing entry)
+    async function ensureDefaultDevFiles(rawId = '') {
+      const cache = await caches.open(CACHE_NAME);
+      const fullOrigin = window.location.origin;
+
+      const rootDevKey = `${fullOrigin}${getRootDevFileUrl()}`;
+      if (!(await cache.match(rootDevKey))) {
+        await cache.put(
+          rootDevKey,
+          new Response('false', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+        );
+      }
+
+      if (rawId) {
+        const { devFileUrl } = getAppPaths(rawId);
+        const appDevKey = `${fullOrigin}${devFileUrl}`;
+        if (!(await cache.match(appDevKey))) {
+          await cache.put(
+            appDevKey,
+            new Response('false', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+          );
+        }
+      }
+    }
+
+    function injectPwaWrapper(htmlText, appName, manifestUrl, pwaBlocked) {
+      const manifestLink = `<link rel="manifest" href="${encodeURI(manifestUrl)}">`;
+      const pwaControlScript = `
+        <script>
+          window.__PWA_MANIFEST_BLOCKED__ = ${pwaBlocked ? 'true' : 'false'};
+          window.PWA_CONTROLS = Object.freeze({
+            blockManifestEdits: ${pwaBlocked ? 'true' : 'false'},
+            setManifestEditLock: function(locked) {
+              window.__PWA_MANIFEST_BLOCKED__ = Boolean(locked);
+              return window.__PWA_MANIFEST_BLOCKED__;
+            }
+          });
+        <\/script>
+      `;
+
+      const installGate = `
+        <style id="pwa-gate-styles">
+          @media all and (display-mode: standalone) {
+            #pwa-install-gate { display: none !important; }
+            #pwa-app-content { display: block !important; }
+          }
+          @media not all and (display-mode: standalone) {
+            #pwa-app-content { display: none !important; }
+            #pwa-install-gate {
+              position: fixed;
+              inset: 0;
+              background: #0f172a;
+              color: #f8fafc;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+              text-align: center;
+              padding: 2rem;
+              z-index: 999999;
+              font-family: system-ui, -apple-system, sans-serif;
+            }
+            #pwa-install-gate h1 {
+              margin: 0 0 0.75rem;
+              font-size: 1.75rem;
+              color: #ffffff;
+            }
+            #pwa-install-gate p {
+              margin: 0 0 1.5rem;
+              max-width: 460px;
+              color: #cbd5e1;
+              font-size: 1rem;
+            }
+            #pwa-gate-install-btn {
+              background: #22c55e;
+              color: #052e16;
+              border: none;
+              padding: 14px 28px;
+              border-radius: 10px;
+              font-weight: 700;
+              cursor: pointer;
+              font-size: 1rem;
+            }
+          }
+        </style>
+        <div id="pwa-install-gate">
+          <h1>${appName} is Ready to Install</h1>
+          <p>Click the green <strong>Install</strong> button below (or the Install icon in your browser's address bar) to install and open this PWA.</p>
+          <button id="pwa-gate-install-btn">Install ${appName}</button>
+        </div>
+        <script>
+          (function() {
+            let deferredInstallPrompt = null;
+            const installBtn = document.getElementById('pwa-gate-install-btn');
+            window.addEventListener('beforeinstallprompt', (e) => {
+              e.preventDefault();
+              deferredInstallPrompt = e;
+            });
+            if (installBtn) {
+              installBtn.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                  deferredInstallPrompt.prompt();
+                  await deferredInstallPrompt.userChoice;
+                  deferredInstallPrompt = null;
+                } else {
+                  statusMessageFallback();
+                }
+              });
+            }
+            function statusMessageFallback() {
+              const gate = document.getElementById('pwa-install-gate');
+              if (gate && !gate.querySelector('.pwa-hint')) {
+                const hint = document.createElement('p');
+                hint.className = 'pwa-hint';
+                hint.style.marginTop = '1rem';
+                hint.style.color = '#93c5fd';
+                hint.textContent = 'Use your browser menu or address bar Install icon to complete installation.';
+                gate.appendChild(hint);
+              }
+            }
+          })();
+        <\/script>
+      `;
+
+      let output = htmlText;
+      if (output.includes('</head>')) {
+        output = output.replace('</head>', `${manifestLink}\n${pwaControlScript}\n</head>`);
+      } else {
+        output = `${manifestLink}\n${pwaControlScript}\n${output}`;
+      }
+
+      if (output.includes('<body')) {
+        output = output.replace(/<body([^>]*)>/i, `<body$1>${installGate}\n<div id="pwa-app-content">`);
+        if (output.includes('</body>')) {
+          output = output.replace('</body>', `</div>\n</body>`);
+        } else {
+          output = `${output}\n</div>`;
+        }
+      } else {
+        output = `${installGate}\n<div id="pwa-app-content">${output}</div>`;
+      }
+
+      return output;
+    }
+
     function updateModeUI() {
-      // If dev is not unlocked via dev.file === "true", force dev mode off & hide button
       if (!modeState.devUnlocked) {
         modeState.dev = false;
       }
       btnModeDev.classList.toggle('hidden', !modeState.devUnlocked);
       modeBar.classList.toggle('dev-unlocked', modeState.devUnlocked);
 
-      // Compute exact combined mode string
       const parts = [];
       if (modeState.dev) parts.push('DEV');
       parts.push(modeState.base);
@@ -203,9 +599,12 @@
       document.getElementById('activeModeLabel').textContent = fullModeName;
 
       const descs = [];
-      descs.push(modeState.base === 'HTML' ? 'Single .html file' : 'app.zip or app/ folder');
+      if (modeState.dev) {
+        descs.push('Live Folder Broadcast');
+      } else {
+        descs.push(modeState.base === 'HTML' ? 'Single .html file' : 'app.zip or app/ folder');
+      }
       if (modeState.edits) descs.push('Manifest Editor');
-      if (modeState.dev) descs.push('Live Folder Broadcast');
       document.getElementById('activeModeDesc').textContent = descs.join(' + ');
 
       btnModeHtml.classList.toggle('active', modeState.base === 'HTML');
@@ -213,126 +612,30 @@
       btnModeEdits.classList.toggle('edits-active', modeState.edits);
       btnModeDev.classList.toggle('dev-active', modeState.dev);
 
-      document.getElementById('htmlSourceSection').classList.toggle('hidden', modeState.base !== 'HTML');
-      document.getElementById('fullSourceSection').classList.toggle('hidden', modeState.base !== 'FULL');
+      // DEVELOPER mode replaces file upload controls when active
+      const hideFileUploadsForDev = Boolean(modeState.dev && modeState.devUnlocked);
+      document.getElementById('htmlSourceSection').classList.toggle('hidden', hideFileUploadsForDev || modeState.base !== 'HTML');
+      document.getElementById('fullSourceSection').classList.toggle('hidden', hideFileUploadsForDev || modeState.base !== 'FULL');
 
-      // Rule: Section 2 (Core PWA Identity & Details) is ONLY visible when:
-      // - For an existing app: NOT blocking manifest edits AND EDITS toggle is ON
-      // - For a brand-new app ID (not yet created): visible so initial details can be set
-      const canShowSection2 = !modeState.selectedAppManifestBlocked && (!modeState.selectedAppExists || modeState.edits);
-      document.getElementById('coreDetailsPanel').classList.toggle('hidden', !canShowSection2);
-      document.getElementById('manifestProtectionPanel').classList.toggle('hidden', modeState.selectedAppManifestBlocked);
-
-      // EDITS panel is visible when EDITS toggle is ON and manifest edits are NOT blocked
-      document.getElementById('editsPanel').classList.toggle('hidden', !modeState.edits || modeState.selectedAppManifestBlocked);
+      // STRICT RULE: Merged App ID + PWA Identity & EDITS panel ONLY show when EDITS is toggled ON AND the PWA does NOT block edits
+      const canShowEditsIdentity = Boolean(modeState.edits && !modeState.selectedAppManifestBlocked);
+      document.getElementById('editsIdentityPanel').classList.toggle('hidden', !canShowEditsIdentity);
+      document.getElementById('editsPanel').classList.toggle('hidden', !canShowEditsIdentity);
       document.getElementById('developerPanel').classList.toggle('hidden', !modeState.dev || !modeState.devUnlocked);
     }
 
-    btnModeHtml.addEventListener('click', () => { modeState.base = 'HTML'; updateModeUI(); });
-    btnModeFull.addEventListener('click', () => { modeState.base = 'FULL'; updateModeUI(); });
-    btnModeEdits.addEventListener('click', () => { modeState.edits = !modeState.edits; updateModeUI(); });
-    btnModeDev.addEventListener('click', () => {
-      if (!modeState.devUnlocked) return;
-      modeState.dev = !modeState.dev;
-      updateModeUI();
-    });
-
-    // Sub-tabs for FULL mode (app.zip vs app/ folder)
-    let fullSubMode = 'zip';
-    const tabZip = document.getElementById('tabZip');
-    const tabFolder = document.getElementById('tabFolder');
-    tabZip.addEventListener('click', () => {
-      fullSubMode = 'zip';
-      tabZip.classList.add('active');
-      tabFolder.classList.remove('active');
-      document.getElementById('zipUploadBox').classList.remove('hidden');
-      document.getElementById('folderUploadBox').classList.add('hidden');
-    });
-    tabFolder.addEventListener('click', () => {
-      fullSubMode = 'folder';
-      tabFolder.classList.add('active');
-      tabZip.classList.remove('active');
-      document.getElementById('folderUploadBox').classList.remove('hidden');
-      document.getElementById('zipUploadBox').classList.add('hidden');
-    });
-
-    // Manifest source toggle (Auto vs Custom JSON)
-    const manifestSourceSelect = document.getElementById('manifestSourceSelect');
-    manifestSourceSelect.addEventListener('change', () => {
-      document.getElementById('customManifestBox').classList.toggle('hidden', manifestSourceSelect.value !== 'custom');
-    });
-    document.getElementById('customManifestFile').addEventListener('change', async (e) => {
-      if (e.target.files && e.target.files[0]) {
-        document.getElementById('customManifestText').value = await e.target.files[0].text();
-      }
-    });
-
-    // Register & force-update Service Worker on load, and ensure default dev.file = "false" exists in Cache
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js', { scope: './' })
-        .then(async (reg) => {
-          reg.update();
-          await ensureDefaultDevFiles();
-          await refreshSelectedAppState();
-          statusEl.textContent = 'Service Worker (v7) active! Configure your PWA below.';
-        })
-        .catch((err) => {
-          statusEl.textContent = 'Service Worker Error: ' + err.message;
-        });
-    }
-
-    function getCleanId() {
-      return document.getElementById('customId').value.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
-    }
-
-    function getRootDevFileUrl() {
-      const basePath = decodeURI(window.location.pathname).replace(/\/[^/]*$/, '/');
-      return `${basePath}dev.file`;
-    }
-
-    function getAppPaths(rawId) {
-      const basePath = decodeURI(window.location.pathname).replace(/\/[^/]*$/, '/');
-      const appScope = `${basePath}apps/${rawId}/`;
-      return {
-        appScope,
-        manifestUrl: `${appScope}manifest.json`,
-        lockUrl: `${appScope}manifest.lock`,
-        devFileUrl: `${appScope}dev.file`
-      };
-    }
-
-    // Ensure dev.file exists in Cache Storage with default value "false"
-    async function ensureDefaultDevFiles(rawId = '') {
-      const cache = await caches.open(CACHE_NAME);
-      const fullOrigin = window.location.origin;
-
-      const rootDevKey = `${fullOrigin}${getRootDevFileUrl()}`;
-      if (!(await cache.match(rootDevKey))) {
-        await cache.put(rootDevKey, new Response('false', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }));
-      }
-
-      if (rawId) {
-        const { devFileUrl } = getAppPaths(rawId);
-        const appDevKey = `${fullOrigin}${devFileUrl}`;
-        if (!(await cache.match(appDevKey))) {
-          await cache.put(appDevKey, new Response('false', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }));
-        }
-      }
-    }
-
-    // Check Cache Storage for dev.file === "true" and manifest.lock status for the entered Custom URL ID
     async function refreshSelectedAppState() {
       const cache = await caches.open(CACHE_NAME);
       const fullOrigin = window.location.origin;
       const rawId = getCleanId();
 
-      // Check global dev.file or app-specific dev.file
       let devTrue = false;
       const rootDevRes = await cache.match(`${fullOrigin}${getRootDevFileUrl()}`);
       if (rootDevRes && (await rootDevRes.text()).trim().toLowerCase() === 'true') {
         devTrue = true;
       }
 
+      const noticeEl = document.getElementById('idLockNotice');
       if (rawId) {
         await ensureDefaultDevFiles(rawId);
         const { manifestUrl, lockUrl, devFileUrl } = getAppPaths(rawId);
@@ -346,313 +649,148 @@
         modeState.selectedAppExists = Boolean(existingManifest);
         modeState.selectedAppManifestBlocked = await isManifestBlocked(cache, lockUrl);
 
-        const noticeEl = document.getElementById('idLockNotice');
-        if (modeState.selectedAppManifestBlocked) {
-          noticeEl.textContent = `🔒 App "${rawId}" has manifest editing BLOCKED by custom injected protection. Section 2 & manifest edits are hidden.`;
-          noticeEl.style.color = '#dc2626';
-        } else if (modeState.selectedAppExists) {
-          noticeEl.textContent = modeState.edits
-            ? `✏️ App "${rawId}" is unlocked and EDITS mode is ON — Section 2 & manifest editor are visible.`
-            : `ℹ️ App "${rawId}" already exists. Turn ON the EDITS toggle to view/edit Section 2 & manifest details.`;
-          noticeEl.style.color = '#2563eb';
-        } else {
-          noticeEl.textContent = `✨ New PWA ID "${rawId}" — configure initial details below.`;
-          noticeEl.style.color = '#059669';
+        if (noticeEl) {
+          if (modeState.selectedAppManifestBlocked) {
+            noticeEl.textContent = `PWA "${rawId}" blocks manifest edits. Editing controls are hidden.`;
+            noticeEl.style.color = '#dc2626';
+          } else if (modeState.selectedAppExists) {
+            noticeEl.textContent = `PWA "${rawId}" is unlocked and EDITS mode is ON.`;
+            noticeEl.style.color = '#2563eb';
+          } else {
+            noticeEl.textContent = `New PWA ID "${rawId}" — configure details below.`;
+            noticeEl.style.color = '#059669';
+          }
         }
       } else {
         modeState.selectedAppExists = false;
         modeState.selectedAppManifestBlocked = false;
-        document.getElementById('idLockNotice').textContent = '';
+        if (noticeEl) noticeEl.textContent = '';
       }
 
       modeState.devUnlocked = devTrue;
       updateModeUI();
     }
 
+    btnModeHtml.addEventListener('click', () => {
+      modeState.base = 'HTML';
+      updateModeUI();
+    });
+
+    btnModeFull.addEventListener('click', () => {
+      modeState.base = 'FULL';
+      updateModeUI();
+    });
+
+    btnModeEdits.addEventListener('click', async () => {
+      modeState.edits = !modeState.edits;
+      await refreshSelectedAppState();
+      updateModeUI();
+    });
+
+    btnModeDev.addEventListener('click', () => {
+      if (!modeState.devUnlocked) return;
+      modeState.dev = !modeState.dev;
+      updateModeUI();
+    });
+
+    tabZip.addEventListener('click', () => {
+      fullSubMode = 'zip';
+      tabZip.classList.add('active');
+      tabFolder.classList.remove('active');
+      zipUploadBox.classList.remove('hidden');
+      folderUploadBox.classList.add('hidden');
+    });
+
+    tabFolder.addEventListener('click', () => {
+      fullSubMode = 'folder';
+      tabFolder.classList.add('active');
+      tabZip.classList.remove('active');
+      folderUploadBox.classList.remove('hidden');
+      zipUploadBox.classList.add('hidden');
+    });
+
     document.getElementById('customId').addEventListener('input', refreshSelectedAppState);
     window.addEventListener('focus', refreshSelectedAppState);
 
-    // Generate solid PNG data URL icons so Chromium/Edge always fires beforeinstallprompt
-    function generatePngIcon(size, bgColor, text) {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.floor(size * 0.42)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, size / 2, size * 0.54);
-      return canvas.toDataURL('image/png');
-    }
-
-    // Wrap HTML with manifest link, custom manifest-lock guard script, and full-screen install gate overlay
-    function injectPwaWrapper(htmlText, appName, manifestUrl, isManifestLocked = false) {
-      const manifestLink = `<link rel="manifest" href="${encodeURI(manifestUrl)}">`;
-      const manifestGuardScript = isManifestLocked ? `
-        <script>
-          // Custom injected protection: block runtime manifest mutation or tampering inside the PWA
-          (function() {
-            const manifestEl = document.querySelector('link[rel="manifest"]');
-            if (manifestEl) {
-              const lockedHref = manifestEl.getAttribute('href');
-              Object.defineProperty(manifestEl, 'href', {
-                get: () => lockedHref,
-                set: () => { console.warn('Manifest modification blocked by PWA installer policy.'); }
-              });
-              const observer = new MutationObserver(() => {
-                if (manifestEl.getAttribute('href') !== lockedHref) {
-                  manifestEl.setAttribute('href', lockedHref);
-                }
-              });
-              observer.observe(manifestEl, { attributes: true, attributeFilter: ['href'] });
-            }
-          })();
-        <\/script>
-      ` : '';
-      const installGate = `
-        <style>
-          @media all and (display-mode: standalone) {
-            #pwa-install-gate { display: none !important; }
-          }
-          #pwa-install-gate {
-            position: fixed; inset: 0; background: #0f172a; color: #f8fafc;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            text-align: center; padding: 24px; z-index: 2147483647; font-family: sans-serif;
-          }
-          #pwa-install-gate .pwa-card {
-            background: #1e293b; border: 1px solid #334155; border-radius: 16px;
-            padding: 32px 28px; max-width: 440px; width: 100%;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
-          }
-          #pwa-install-gate .pwa-badge {
-            display: inline-block; background: #16a34a22; color: #4ade80;
-            border: 1px solid #22c55e55; padding: 4px 12px; border-radius: 999px;
-            font-size: 13px; font-weight: bold; margin-bottom: 14px;
-          }
-          #pwa-install-gate h1 { margin: 0 0 10px; font-size: 24px; color: #ffffff; }
-          #pwa-install-gate p { margin: 0 0 22px; font-size: 15px; color: #cbd5e1; line-height: 1.5; }
-          #pwa-install-gate .pwa-pointer {
-            font-size: 26px; margin-bottom: 10px; animation: pwa-bounce 1s infinite alternate;
-          }
-          @keyframes pwa-bounce {
-            from { transform: translateY(0); }
-            to { transform: translateY(6px); }
-          }
-          #pwa-native-install {
-            background: #22c55e; color: #ffffff; border: none; padding: 14px 24px;
-            border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 17px;
-            width: 100%; box-shadow: 0 4px 14px rgba(34, 197, 94, 0.4);
-          }
-          #pwa-native-install:hover { background: #16a34a; }
-          #pwa-install-status {
-            font-size: 14px; color: #94a3b8; background: #0f172a;
-            padding: 12px; border-radius: 8px; border: 1px solid #334155;
-          }
-        </style>
-        <div id="pwa-install-gate">
-          <div class="pwa-card">
-            <div class="pwa-badge">READY TO INSTALL</div>
-            <h1>Your PWA is Ready!</h1>
-            <p><strong>${appName}</strong> has been built and saved locally. Install it now to unlock and launch your PWA.</p>
-            <div id="pwa-pointer" class="pwa-pointer" hidden>👇</div>
-            <div id="pwa-install-status">Preparing official install button... (Or click the Install icon in your browser's address bar ↗)</div>
-            <button id="pwa-native-install" hidden>Install ${appName}</button>
-          </div>
-        </div>
-        <script>
-          let deferredInstallPrompt;
-          window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredInstallPrompt = e;
-            document.getElementById('pwa-install-status').hidden = true;
-            document.getElementById('pwa-pointer').hidden = false;
-            const btn = document.getElementById('pwa-native-install');
-            btn.hidden = false;
-            btn.addEventListener('click', async () => {
-              deferredInstallPrompt.prompt();
-              await deferredInstallPrompt.userChoice;
-              deferredInstallPrompt = null;
-            });
-          });
-          window.addEventListener('appinstalled', () => {
-            const title = document.querySelector('#pwa-install-gate h1');
-            const desc = document.querySelector('#pwa-install-gate p');
-            const btn = document.getElementById('pwa-native-install');
-            const ptr = document.getElementById('pwa-pointer');
-            if (title) title.textContent = 'PWA Installed!';
-            if (desc) desc.textContent = 'Open ${appName} from your desktop, Start menu, or taskbar to view its contents.';
-            if (btn) btn.hidden = true;
-            if (ptr) ptr.hidden = true;
-          });
-        <\/script>
-      `;
-
-      if (!/<html/i.test(htmlText)) {
-        return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${appName}</title>${manifestLink}${manifestGuardScript}</head><body>${installGate}${htmlText}</body></html>`;
-      }
-
-      if (/<head[^>]*>/i.test(htmlText)) {
-        htmlText = htmlText.replace(/<head([^>]*)>/i, `<head$1>\n${manifestLink}\n${manifestGuardScript}`);
-      } else {
-        htmlText = `${manifestLink}\n${manifestGuardScript}\n` + htmlText;
-      }
-
-      if (/<body[^>]*>/i.test(htmlText)) {
-        htmlText = htmlText.replace(/<body([^>]*)>/i, `<body$1>\n${installGate}`);
-      } else {
-        htmlText = `${htmlText}\n${installGate}`;
-      }
-
-      return htmlText;
-    }
-
-    // Build a Web App Manifest object using PNG icons generated from shortName and themeColor
-    function buildManifestObject(rawId, appName, shortName, themeColor, appScope) {
-      const badgeText = (shortName || rawId || 'PW').slice(0, 2).toUpperCase();
-      const icon192 = generatePngIcon(192, themeColor, badgeText);
-      const icon512 = generatePngIcon(512, themeColor, badgeText);
-
-      return {
-        name: appName,
-        short_name: shortName,
-        id: encodeURI(appScope),
-        start_url: encodeURI(appScope),
-        scope: encodeURI(appScope),
-        display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: themeColor,
-        icons: [
-          {
-            src: icon192,
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: icon512,
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      };
-    }
-
-    // Detect whether the PWA itself declares a lock/block on manifest edits
-    function detectPwaManifestLock(htmlText = '', manifestObj = null) {
-      const hasMetaLock = /<meta\b[^>]*name=["']?pwa-block-manifest(?:-edits)?["']?[^>]*content=["']?true["']?/i.test(htmlText);
-      const hasScriptLock = /blockManifestEdits\s*[:=]\s*true|data-block-manifest=["']?true["']?/i.test(htmlText);
-      const hasManifestLock = Boolean(
-        manifestObj && (
-          manifestObj.block_manifest_edits === true ||
-          manifestObj.lock_manifest === true ||
-          (manifestObj.pwa_controls && manifestObj.pwa_controls.block_manifest_edits === true)
-        )
-      );
-      return hasMetaLock || hasScriptLock || hasManifestLock;
-    }
-
-    // Check if manifest.lock is set to "true" for a given PWA ID
-    async function isManifestBlocked(cache, lockUrl) {
-      const fullOrigin = window.location.origin;
-      const lockRes = await cache.match(`${fullOrigin}${lockUrl}`);
-      if (!lockRes) return false;
-      const text = (await lockRes.text()).trim().toLowerCase();
-      return text === 'true';
-    }
-
-    // --- EDITS MODE HANDLERS ---
-    document.getElementById('loadManifestBtn').addEventListener('click', async () => {
+    loadManifestBtn.addEventListener('click', async () => {
       try {
-        const rawId = getCleanId();
-        if (!rawId) {
-          statusEl.textContent = 'Enter a Custom URL ID first to load its manifest.';
+        if (!modeState.edits) {
+          statusEl.textContent = 'EDITS mode is OFF.';
           return;
         }
-        const { manifestUrl, lockUrl } = getAppPaths(rawId);
-        const cache = await caches.open(CACHE_NAME);
-        const fullOrigin = window.location.origin;
-
-        const manifestRes = await cache.match(`${fullOrigin}${manifestUrl}`);
-        if (!manifestRes) {
-          statusEl.textContent = `No cached manifest found for ID "${rawId}".`;
-          return;
-        }
-        const jsonObj = await manifestRes.json();
-
-        // Respect lock if declared inside the PWA's manifest or manifest.lock
-        const pwaLocked = detectPwaManifestLock('', jsonObj);
-        const blocked = (await isManifestBlocked(cache, lockUrl)) || pwaLocked;
-        if (pwaLocked) {
-          await cache.put(`${fullOrigin}${lockUrl}`, new Response('true', { headers: { 'Content-Type': 'text/plain' } }));
-        }
-        await refreshSelectedAppState();
-
-        if (blocked) {
-          document.getElementById('editManifestText').value = '';
-          statusEl.textContent = `BLOCKED: PWA "${rawId}" blocks manifest edits.`;
-          return;
-        }
-
-        document.getElementById('editManifestText').value = JSON.stringify(jsonObj, null, 2);
-        statusEl.textContent = `Loaded manifest for "${rawId}". You may edit and save it.`;
-      } catch (err) {
-        statusEl.textContent = 'Load Manifest Error: ' + err.message;
-      }
-    });
-
-    document.getElementById('saveEditedManifestBtn').addEventListener('click', async () => {
-      try {
         const rawId = getCleanId();
         if (!rawId) {
           statusEl.textContent = 'Enter a Custom URL ID first.';
           return;
         }
-        const { manifestUrl, lockUrl } = getAppPaths(rawId);
         const cache = await caches.open(CACHE_NAME);
-        const fullOrigin = window.location.origin;
+        const { manifestUrl, lockUrl } = getAppPaths(rawId);
 
-        const editedText = document.getElementById('editManifestText').value.trim();
-        const parsed = JSON.parse(editedText); // Validate JSON syntax
-
-        const pwaLocked = detectPwaManifestLock('', parsed);
-        if ((await isManifestBlocked(cache, lockUrl)) || pwaLocked) {
-          if (pwaLocked) {
-            await cache.put(`${fullOrigin}${lockUrl}`, new Response('true', { headers: { 'Content-Type': 'text/plain' } }));
-            await refreshSelectedAppState();
-          }
-          statusEl.textContent = `BLOCKED: Manifest editing is blocked by PWA "${rawId}". Changes were rejected.`;
+        if (await isManifestBlocked(cache, lockUrl)) {
+          modeState.selectedAppManifestBlocked = true;
+          updateModeUI();
+          statusEl.textContent = `Manifest edits for "${rawId}" are blocked by the PWA.`;
           return;
         }
 
+        const cachedRes = await cache.match(`${window.location.origin}${manifestUrl}`);
+        if (!cachedRes) {
+          statusEl.textContent = `No cached manifest.json found for "${rawId}".`;
+          return;
+        }
+        editManifestText.value = await cachedRes.text();
+        statusEl.textContent = `Loaded manifest.json for "${rawId}".`;
+      } catch (err) {
+        statusEl.textContent = 'Error loading manifest: ' + err.message;
+      }
+    });
+
+    saveEditedManifestBtn.addEventListener('click', async () => {
+      try {
+        if (!modeState.edits) {
+          statusEl.textContent = 'EDITS mode is OFF.';
+          return;
+        }
+        const rawId = getCleanId();
+        if (!rawId) {
+          statusEl.textContent = 'Enter a Custom URL ID first.';
+          return;
+        }
+        const cache = await caches.open(CACHE_NAME);
+        const { manifestUrl, lockUrl } = getAppPaths(rawId);
+
+        if (await isManifestBlocked(cache, lockUrl)) {
+          modeState.selectedAppManifestBlocked = true;
+          updateModeUI();
+          statusEl.textContent = `Manifest edits for "${rawId}" are blocked by the PWA.`;
+          return;
+        }
+
+        const parsed = JSON.parse(editManifestText.value);
+        if (detectPwaManifestLock('', parsed)) {
+          await cache.put(
+            `${window.location.origin}${lockUrl}`,
+            new Response('true', { headers: { 'Content-Type': 'text/plain' } })
+          );
+          modeState.selectedAppManifestBlocked = true;
+          updateModeUI();
+        }
+
         await cache.put(
-          `${fullOrigin}${manifestUrl}`,
+          `${window.location.origin}${manifestUrl}`,
           new Response(JSON.stringify(parsed, null, 2), {
             headers: { 'Content-Type': 'application/manifest+json' }
           })
         );
-
-        statusEl.textContent = `Saved updated manifest for "${rawId}"!`;
-        await refreshSelectedAppState();
+        statusEl.textContent = `Saved edited manifest.json for "${rawId}".`;
       } catch (err) {
-        statusEl.textContent = 'Save Edited Manifest Error: ' + err.message;
+        statusEl.textContent = 'Error saving manifest: ' + err.message;
       }
     });
 
-    // Shared helper to broadcast a local device folder in DEVELOPER mode (replaces file upload)
     async function broadcastLocalFolderForApp(rawId) {
-      await refreshSelectedAppState();
-      if (!modeState.devUnlocked) {
-        statusEl.textContent = 'ACCESS DENIED: dev.file must be set to "true" in Cache Storage.';
-        return;
-      }
-      if (!rawId) {
-        statusEl.textContent = 'Enter a Custom URL ID first.';
-        return;
-      }
-      if (!('showDirectoryPicker' in window)) {
-        statusEl.textContent = 'Your browser does not support showDirectoryPicker() for live folder broadcasting.';
+      if (typeof window.showDirectoryPicker !== 'function') {
+        statusEl.textContent = 'This browser does not support showDirectoryPicker for live folder broadcast.';
         return;
       }
 
@@ -660,62 +798,79 @@
       const cache = await caches.open(CACHE_NAME);
       const fullOrigin = window.location.origin;
 
-      // Prompt user to select local device folder to broadcast (replaces upload)
+      await ensureDefaultDevFiles(rawId);
+      const rootDevRes = await cache.match(`${fullOrigin}${getRootDevFileUrl()}`);
+      const appDevRes = await cache.match(`${fullOrigin}${getAppPaths(rawId).devFileUrl}`);
+      const rootTrue = rootDevRes && (await rootDevRes.text()).trim().toLowerCase() === 'true';
+      const appTrue = appDevRes && (await appDevRes.text()).trim().toLowerCase() === 'true';
+
+      if (!rootTrue && !appTrue) {
+        modeState.devUnlocked = false;
+        modeState.dev = false;
+        updateModeUI();
+        statusEl.textContent = 'dev.file must be set to "true" in Cache Storage to broadcast a folder.';
+        return;
+      }
+
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
 
-      // Inspect folder's index.html (if present) so the PWA itself can declare manifest blocking
       let pwaBlocked = await isManifestBlocked(cache, lockUrl);
-      let rawEntryHtml = '<div id="dev-live-root"></div>';
+      let rawEntryHtml = '';
+      let hasHtmlFile = false;
+
       try {
         const indexHandle = await dirHandle.getFileHandle('index.html');
         const indexFile = await indexHandle.getFile();
         rawEntryHtml = await indexFile.text();
+        hasHtmlFile = true;
         if (detectPwaManifestLock(rawEntryHtml)) {
           pwaBlocked = true;
         }
       } catch (_) {
-        // Optional index.html inside broadcasted folder
+        for await (const [entryName, handle] of dirHandle.entries()) {
+          if (handle.kind === 'file' && entryName.toLowerCase().endsWith('.html')) {
+            const f = await handle.getFile();
+            const txt = await f.text();
+            if (!rawEntryHtml) {
+              rawEntryHtml = txt;
+              hasHtmlFile = true;
+            }
+            if (detectPwaManifestLock(txt)) {
+              pwaBlocked = true;
+            }
+          }
+        }
       }
 
-      const appName = (!pwaBlocked && modeState.edits && document.getElementById('appName').value.trim())
+      const canUseEditsFields = Boolean(modeState.edits && !pwaBlocked);
+      const appName = (canUseEditsFields && document.getElementById('appName').value.trim())
         ? document.getElementById('appName').value.trim()
         : rawId;
-      const shortName = (!pwaBlocked && modeState.edits && document.getElementById('shortName').value.trim())
+      const shortName = (canUseEditsFields && document.getElementById('shortName').value.trim())
         ? document.getElementById('shortName').value.trim()
         : appName;
-      const themeColor = (!pwaBlocked && modeState.edits)
+      const themeColor = canUseEditsFields
         ? document.getElementById('themeColor').value
         : '#2563eb';
 
-      let manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
+      const manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
       if (detectPwaManifestLock(rawEntryHtml, manifestData)) {
         pwaBlocked = true;
-      }
-
-      if (!pwaBlocked) {
-        await cache.put(
-          `${fullOrigin}${manifestUrl}`,
-          new Response(JSON.stringify(manifestData, null, 2), {
-            headers: { 'Content-Type': 'application/manifest+json' }
-          })
-        );
-      } else {
-        const existingManifest = await cache.match(`${fullOrigin}${manifestUrl}`);
-        if (!existingManifest) {
-          await cache.put(
-            `${fullOrigin}${manifestUrl}`,
-            new Response(JSON.stringify(manifestData, null, 2), {
-              headers: { 'Content-Type': 'application/manifest+json' }
-            })
-          );
-        }
       }
 
       await cache.put(
         `${fullOrigin}${lockUrl}`,
         new Response(pwaBlocked ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
       );
-      await ensureDefaultDevFiles(rawId);
+
+      if (!pwaBlocked || !(await cache.match(`${fullOrigin}${manifestUrl}`))) {
+        await cache.put(
+          `${fullOrigin}${manifestUrl}`,
+          new Response(JSON.stringify(manifestData, null, 2), {
+            headers: { 'Content-Type': 'application/manifest+json' }
+          })
+        );
+      }
 
       const reg = await navigator.serviceWorker.ready;
       if (reg.active) {
@@ -726,81 +881,32 @@
         });
       }
 
-      const devIndexHtml = injectPwaWrapper(rawEntryHtml, appName, manifestUrl, pwaBlocked);
+      const devIndexHtml = injectPwaWrapper(rawEntryHtml || '<div></div>', appName, manifestUrl, pwaBlocked);
       await cache.put(
         `${fullOrigin}${appScope}index.html`,
         new Response(devIndexHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
       );
 
       await refreshSelectedAppState();
-      statusEl.textContent = `DEVELOPER BROADCAST ACTIVE! Streaming "${dirHandle.name}" to ${appScope}...`;
+      statusEl.textContent = `Broadcasting "${dirHandle.name}" to ${appScope}${hasHtmlFile ? '' : ' (no index.html required)'}...`;
       window.open(encodeURI(appScope), '_blank');
     }
 
-    // --- DEVELOPER MODE HANDLER (Verifies dev.file === "true" in Cache + showDirectoryPicker broadcast) ---
-    document.getElementById('broadcastFolderBtn').addEventListener('click', async () => {
+    broadcastFolderBtn.addEventListener('click', async () => {
       try {
-        await broadcastLocalFolderForApp(getCleanId());
+        const canUseEditsFields = Boolean(modeState.edits && !modeState.selectedAppManifestBlocked);
+        const rawId = canUseEditsFields ? (getCleanId() || getOrGenerateId()) : getOrGenerateId();
+        await broadcastLocalFolderForApp(rawId);
       } catch (err) {
-        statusEl.textContent = 'Developer Broadcast Error: ' + err.message;
+        statusEl.textContent = 'Folder broadcast error: ' + err.message;
       }
     });
 
-    // Built-in Cache & Service Worker Reset
-    resetBtn.addEventListener('click', async () => {
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((key) => caches.delete(key)));
-
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map((reg) => reg.unregister()));
-        }
-
-        statusEl.textContent = 'Cache and Service Workers cleared! Reloading page...';
-        setTimeout(() => window.location.reload(), 800);
-      } catch (err) {
-        statusEl.textContent = 'Reset failed: ' + err.message;
-      }
-    });
-
-    // Helper to infer MIME type for FULL mode files
-    function inferContentType(filename) {
-      const ext = filename.split('.').pop().toLowerCase();
-      const map = {
-        html: 'text/html; charset=utf-8',
-        htm: 'text/html; charset=utf-8',
-        css: 'text/css; charset=utf-8',
-        js: 'application/javascript; charset=utf-8',
-        mjs: 'application/javascript; charset=utf-8',
-        json: 'application/json; charset=utf-8',
-        webmanifest: 'application/manifest+json; charset=utf-8',
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        svg: 'image/svg+xml',
-        webp: 'image/webp',
-        ico: 'image/x-icon',
-        wasm: 'application/wasm',
-        txt: 'text/plain; charset=utf-8',
-        mp3: 'audio/mpeg',
-        wav: 'audio/wav',
-        mp4: 'video/mp4'
-      };
-      return map[ext] || 'application/octet-stream';
-    }
-
-    // Main Save & Install Handler (Handles DEVELOPER folder broadcast, HTML, and FULL modes)
     saveBtn.addEventListener('click', async () => {
       try {
-        const rawId = getCleanId();
-        if (!rawId) {
-          statusEl.textContent = 'Please enter a Custom URL ID.';
-          return;
-        }
+        const canUseEditsFields = Boolean(modeState.edits && !modeState.selectedAppManifestBlocked);
+        const rawId = canUseEditsFields ? (getCleanId() || getOrGenerateId()) : getOrGenerateId();
 
-        // When DEVELOPER mode is active, folder broadcast replaces file upload
         if (modeState.dev && modeState.devUnlocked) {
           await broadcastLocalFolderForApp(rawId);
           return;
@@ -810,15 +916,13 @@
         const cache = await caches.open(CACHE_NAME);
         const fullOrigin = window.location.origin;
 
-        // Ensure dev.file is initialized to "false" by default for this app
         await ensureDefaultDevFiles(rawId);
 
         let manifestBlocked = await isManifestBlocked(cache, lockUrl);
         let rawEntryHtml = '';
-        let fullSourceFiles = []; // { relPath, text, blob }
+        let fullSourceFiles = [];
 
         if (modeState.base === 'HTML') {
-          // HTML MODE: Single .html file only
           const fileInput = document.getElementById('htmlFile');
           if (!fileInput.files || !fileInput.files[0]) {
             statusEl.textContent = 'HTML Mode requires selecting an .html file.';
@@ -826,19 +930,18 @@
           }
           rawEntryHtml = await fileInput.files[0].text();
         } else {
-          // FULL MODE: app.zip OR app/ folder
-          let foundIndex = false;
-
           if (fullSubMode === 'zip') {
             const zipInput = document.getElementById('zipFile');
             if (!zipInput.files || !zipInput.files[0]) {
               statusEl.textContent = 'FULL Mode (ZIP) requires selecting an app.zip file.';
               return;
             }
+            if (typeof window.JSZip !== 'function') {
+              statusEl.textContent = 'JSZip library is still loading.';
+              return;
+            }
             const zip = await JSZip.loadAsync(zipInput.files[0]);
             const entries = Object.keys(zip.files);
-
-            // Detect if all files are nested inside a single top-level folder (e.g. "app/index.html")
             const nonDirEntries = entries.filter((name) => !zip.files[name].dir);
             const firstSegments = new Set(nonDirEntries.map((n) => n.split('/')[0]));
             const stripPrefix = (firstSegments.size === 1 && nonDirEntries.every((n) => n.includes('/')))
@@ -851,15 +954,22 @@
               if (relPath.toLowerCase() === 'dev.file' || relPath.toLowerCase() === 'manifest.lock') continue;
 
               if (relPath.toLowerCase() === 'index.html') {
-                foundIndex = true;
                 rawEntryHtml = await zip.files[entryName].async('text');
               } else {
                 const blob = await zip.files[entryName].async('blob');
+                if (!rawEntryHtml && relPath.toLowerCase().endsWith('.html')) {
+                  rawEntryHtml = await blob.text();
+                }
+                if (relPath.toLowerCase().endsWith('.html')) {
+                  const htmlText = await blob.text();
+                  if (detectPwaManifestLock(htmlText)) {
+                    manifestBlocked = true;
+                  }
+                }
                 fullSourceFiles.push({ relPath, blob });
               }
             }
           } else {
-            // FULL Mode: app/ folder upload
             const folderInput = document.getElementById('folderFiles');
             if (!folderInput.files || folderInput.files.length === 0) {
               statusEl.textContent = 'FULL Mode (Folder) requires selecting an app/ folder.';
@@ -867,40 +977,40 @@
             }
 
             for (const file of folderInput.files) {
-              // Strip top-level folder name (e.g. "app/index.html" -> "index.html")
               const parts = file.webkitRelativePath.split('/');
               const relPath = parts.length > 1 ? parts.slice(1).join('/') : file.name;
               if (!relPath) continue;
               if (relPath.toLowerCase() === 'dev.file' || relPath.toLowerCase() === 'manifest.lock') continue;
 
               if (relPath.toLowerCase() === 'index.html') {
-                foundIndex = true;
                 rawEntryHtml = await file.text();
               } else {
+                if (!rawEntryHtml && relPath.toLowerCase().endsWith('.html')) {
+                  rawEntryHtml = await file.text();
+                }
+                if (relPath.toLowerCase().endsWith('.html')) {
+                  const htmlText = await file.text();
+                  if (detectPwaManifestLock(htmlText)) {
+                    manifestBlocked = true;
+                  }
+                }
                 fullSourceFiles.push({ relPath, blob: file });
               }
             }
           }
-
-          if (!foundIndex) {
-            statusEl.textContent = 'Error: FULL mode requires an index.html file at the root of the ZIP or folder.';
-            return;
-          }
         }
 
-        const appName = (!manifestBlocked && modeState.edits && document.getElementById('appName').value.trim())
+        const appName = (canUseEditsFields && document.getElementById('appName').value.trim())
           ? document.getElementById('appName').value.trim()
           : rawId;
-        const shortName = (!manifestBlocked && modeState.edits && document.getElementById('shortName').value.trim())
+        const shortName = (canUseEditsFields && document.getElementById('shortName').value.trim())
           ? document.getElementById('shortName').value.trim()
           : appName;
-        const themeColor = (!manifestBlocked && modeState.edits)
+        const themeColor = canUseEditsFields
           ? document.getElementById('themeColor').value
           : '#2563eb';
 
-        let manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
-
-        // Allow the PWA itself to declare manifest blocking (via HTML meta/script or manifest flag)
+        const manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
         if (detectPwaManifestLock(rawEntryHtml, manifestData)) {
           manifestBlocked = true;
         }
@@ -910,26 +1020,16 @@
           new Response(manifestBlocked ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
         );
 
-        if (!manifestBlocked) {
+        if (!manifestBlocked || !(await cache.match(`${fullOrigin}${manifestUrl}`))) {
           await cache.put(
             `${fullOrigin}${manifestUrl}`,
             new Response(JSON.stringify(manifestData, null, 2), {
               headers: { 'Content-Type': 'application/manifest+json' }
             })
           );
-        } else {
-          const existingManifest = await cache.match(`${fullOrigin}${manifestUrl}`);
-          if (!existingManifest) {
-            await cache.put(
-              `${fullOrigin}${manifestUrl}`,
-              new Response(JSON.stringify(manifestData, null, 2), {
-                headers: { 'Content-Type': 'application/manifest+json' }
-              })
-            );
-          }
         }
 
-        const wrappedHtml = injectPwaWrapper(rawEntryHtml, appName, manifestUrl, manifestBlocked);
+        const wrappedHtml = injectPwaWrapper(rawEntryHtml || '<div></div>', appName, manifestUrl, manifestBlocked);
         await cache.put(
           `${fullOrigin}${appScope}index.html`,
           new Response(wrappedHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
@@ -952,6 +1052,40 @@
         statusEl.textContent = 'Error: ' + err.message;
       }
     });
+
+    resetBtn.addEventListener('click', async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((reg) => reg.unregister()));
+        }
+
+        statusEl.textContent = 'Cache and Service Workers cleared! Reloading page...';
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        statusEl.textContent = 'Reset failed: ' + err.message;
+      }
+    });
+
+    (async function init() {
+      updateModeUI();
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+          reg.update();
+          await ensureDefaultDevFiles();
+          await refreshSelectedAppState();
+          statusEl.textContent = 'Service Worker active! Select your mode and files.';
+        } catch (err) {
+          statusEl.textContent = 'Service Worker Error: ' + err.message;
+        }
+      } else {
+        statusEl.textContent = 'Service Workers are not supported in this browser.';
+      }
+    })();
   </script>
 </body>
 </html>
