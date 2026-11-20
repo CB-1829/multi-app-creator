@@ -1,4 +1,4 @@
-const CACHE_NAME = 'local-pwa-builder-v3';
+const CACHE_NAME = 'local-pwa-builder-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
