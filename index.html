@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local HTML to PWA Installer</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    label { display: block; margin-top: 1rem; font-weight: bold; }
+    input, button { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; font-size: 16px; }
+    button { margin-top: 1.2rem; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    button.danger { background: #dc2626; margin-top: 0.75rem; }
+    #status { margin-top: 1rem; padding: 12px; background: #f1f5f9; border-radius: 6px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <h1>Local HTML to PWA Installer</h1>
+
+  <label>1. Upload HTML File (.html)</label>
+  <input type="file" id="htmlFile" accept=".html,text/html" required>
+
+  <label>2. Custom URL ID (e.g., calculator, game1)</label>
+  <input type="text" id="customId" placeholder="pwa-tester-v01" required>
+
+  <label>PWA Full Name</label>
+  <input type="text" id="appName" placeholder="My Custom PWA" required>
+
+  <label>PWA Short Name</label>
+  <input type="text" id="shortName" placeholder="CustomPWA" required>
+
+  <label>Theme Color</label>
+  <input type="color" id="themeColor" value="#2563eb">
+
+  <button id="saveBtn">Save Locally & Open App to Install</button>
+  <button id="resetBtn" class="danger">Clear All Cache & Reset Service Worker</button>
+
+  <div id="status">Starting Service Worker...</div>
+
+  <script>
+    const CACHE_NAME = 'local-pwa-builder-v3';
+    const statusEl = document.getElementById('status');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // Register & force-update Service Worker on load
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .then((reg) => {
+          reg.update();
+          statusEl.textContent = 'Service Worker active! Select an HTML file and enter details.';
+        })
+        .catch((err) => {
+          statusEl.textContent = 'Service Worker Error: ' + err.message;
+        });
+    }
+
+    // Built-in Cache & Service Worker Reset (No DevTools needed)
+    resetBtn.addEventListener('click', async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((reg) => reg.unregister()));
+        }
+
+        statusEl.textContent = 'Cache and Service Workers cleared! Reloading page...';
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        statusEl.textContent = 'Reset failed: ' + err.message;
+      }
+    });
+
+    // Save HTML + Manifest locally and open top-level window to install
+    saveBtn.addEventListener('click', async () => {
+      try {
+        const fileInput = document.getElementById('htmlFile');
+        const rawId = document.getElementById('customId').value.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const appName = document.getElementById('appName').value.trim() || rawId;
+        const shortName = document.getElementById('shortName').value.trim() || appName;
+        const themeColor = document.getElementById('themeColor').value;
+
+        if (!fileInput.files || !fileInput.files[0] || !rawId) {
+          alert('Please select an HTML file and enter a Custom URL ID.');
+          return;
+        }
+
+        let htmlText = await fileInput.files[0].text();
+
+        const basePath = decodeURI(window.location.pathname).replace(/\/[^/]*$/, '/');
+        const appScope = `${basePath}apps/${rawId}/`;
+        const manifestUrl = `${appScope}manifest.json`;
+
+        const manifestLink = `<link rel="manifest" href="${encodeURI(manifestUrl)}">`;
+        const installBar = `
+          <style>
+            @media all and (display-mode: standalone) { #pwa-install-banner { display: none !important; } }
+            #pwa-install-banner { position: fixed; top: 0; left: 0; right: 0; background: #0f172a; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; z-index: 999999; font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+            #pwa-install-banner button { background: #22c55e; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+          </style>
+          <div id="pwa-install-banner">
+            <span>Install <strong>${appName}</strong> as a local PWA</span>
+            <button id="pwa-native-install" hidden>Install Now</button>
+          </div>
+          <script>
+            let deferredInstallPrompt;
+            window.addEventListener('beforeinstallprompt', (e) => {
+              e.preventDefault();
+              deferredInstallPrompt = e;
+              const btn = document.getElementById('pwa-native-install');
+              btn.hidden = false;
+              btn.addEventListener('click', async () => {
+                deferredInstallPrompt.prompt();
+                await deferredInstallPrompt.userChoice;
+                deferredInstallPrompt = null;
+              });
+            });
+          <\/script>
+        `;
+
+        // Inject manifest in <head> and install banner in <body>
+        if (htmlText.includes('</head>')) {
+          htmlText = htmlText.replace('</head>', `${manifestLink}\n</head>`);
+        } else {
+          htmlText = manifestLink + '\n' + htmlText;
+        }
+
+        if (htmlText.includes('</body>')) {
+          htmlText = htmlText.replace('</body>', `${installBar}\n</body>`);
+        } else {
+          htmlText = htmlText + '\n' + installBar;
+        }
+
+        const manifestData = {
+          name: appName,
+          short_name: shortName,
+          id: encodeURI(appScope),
+          start_url: encodeURI(appScope),
+          scope: encodeURI(appScope),
+          display: 'standalone',
+          background_color: '#ffffff',
+          theme_color: themeColor,
+          icons: [
+            {
+              src: `data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 192 192'><rect width='192' height='192' fill='${encodeURIComponent(themeColor)}'/><text x='50%' y='54%' font-size='80' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='middle'>${encodeURIComponent(shortName.slice(0, 2).toUpperCase())}</text></svg>`,
+              sizes: '192x192',
+              type: 'image/svg+xml'
+            }
+          ]
+        };
+
+        const cache = await caches.open(CACHE_NAME);
+        const fullOrigin = window.location.origin;
+
+        await cache.put(
+          `${fullOrigin}${appScope}index.html`,
+          new Response(htmlText, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+        );
+
+        await cache.put(
+          `${fullOrigin}${manifestUrl}`,
+          new Response(JSON.stringify(manifestData), { headers: { 'Content-Type': 'application/manifest+json' } })
+        );
+
+        statusEl.textContent = `Saved locally at ${appScope}! Opening new tab to install...`;
+        window.open(encodeURI(appScope), '_blank');
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
