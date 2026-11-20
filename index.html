@@ -21,7 +21,7 @@
   <input type="file" id="htmlFile" accept=".html,text/html" required>
 
   <label>2. Custom URL ID (e.g., calculator, game1)</label>
-  <input type="text" id="customId" placeholder="pwa-tester-v01" required>
+  <input type="text" id="customId" placeholder="pwa-tester-v04" required>
 
   <label>PWA Full Name</label>
   <input type="text" id="appName" placeholder="My Custom PWA" required>
@@ -38,10 +38,29 @@
   <div id="status">Starting Service Worker...</div>
 
   <script>
-    const CACHE_NAME = 'local-pwa-builder-v3';
+    const CACHE_NAME = 'local-pwa-builder-v4';
     const statusEl = document.getElementById('status');
     const saveBtn = document.getElementById('saveBtn');
     const resetBtn = document.getElementById('resetBtn');
+
+    // Generate a real PNG icon via Canvas so Edge/Chrome ALWAYS fires beforeinstallprompt
+    function generatePngIcon(size, bgColor, text) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, size, size);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(size * 0.42)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, size / 2, size / 2 + Math.round(size * 0.03));
+
+      return canvas.toDataURL('image/png');
+    }
 
     // Register & force-update Service Worker on load
     if ('serviceWorker' in navigator) {
@@ -55,7 +74,7 @@
         });
     }
 
-    // Built-in Cache & Service Worker Reset (No DevTools needed)
+    // Built-in Cache & Service Worker Reset
     resetBtn.addEventListener('click', async () => {
       try {
         const keys = await caches.keys();
@@ -96,19 +115,36 @@
         const manifestLink = `<link rel="manifest" href="${encodeURI(manifestUrl)}">`;
         const installBar = `
           <style>
-            @media all and (display-mode: standalone) { #pwa-install-banner { display: none !important; } }
-            #pwa-install-banner { position: fixed; top: 0; left: 0; right: 0; background: #0f172a; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; z-index: 999999; font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-            #pwa-install-banner button { background: #22c55e; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+            @media all and (display-mode: standalone) {
+              #pwa-install-banner, #pwa-banner-spacer { display: none !important; }
+            }
+            #pwa-banner-spacer { height: 56px; }
+            #pwa-install-banner {
+              position: fixed; top: 0; left: 0; right: 0; height: 56px; box-sizing: border-box;
+              background: #0f172a; color: white; padding: 0 16px;
+              display: flex; justify-content: space-between; align-items: center;
+              z-index: 999999; font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            }
+            #pwa-install-banner button {
+              background: #22c55e; color: white; border: none; padding: 8px 16px;
+              border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; width: auto; margin: 0;
+            }
+            #pwa-install-status { font-size: 13px; color: #94a3b8; }
           </style>
+          <div id="pwa-banner-spacer"></div>
           <div id="pwa-install-banner">
             <span>Install <strong>${appName}</strong> as a local PWA</span>
-            <button id="pwa-native-install" hidden>Install Now</button>
+            <div>
+              <span id="pwa-install-status">Waiting for browser prompt...</span>
+              <button id="pwa-native-install" hidden>Install Now</button>
+            </div>
           </div>
           <script>
             let deferredInstallPrompt;
             window.addEventListener('beforeinstallprompt', (e) => {
               e.preventDefault();
               deferredInstallPrompt = e;
+              document.getElementById('pwa-install-status').hidden = true;
               const btn = document.getElementById('pwa-native-install');
               btn.hidden = false;
               btn.addEventListener('click', async () => {
@@ -117,21 +153,33 @@
                 deferredInstallPrompt = null;
               });
             });
+            window.addEventListener('appinstalled', () => {
+              document.getElementById('pwa-install-banner').style.display = 'none';
+              document.getElementById('pwa-banner-spacer').style.display = 'none';
+            });
           <\/script>
         `;
 
-        // Inject manifest in <head> and install banner in <body>
-        if (htmlText.includes('</head>')) {
-          htmlText = htmlText.replace('</head>', `${manifestLink}\n</head>`);
+        // Ensure valid HTML structure even if user uploads a snippet
+        if (!/<html/i.test(htmlText)) {
+          htmlText = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${appName}</title>${manifestLink}</head><body>${installBar}${htmlText}</body></html>`;
         } else {
-          htmlText = manifestLink + '\n' + htmlText;
+          if (/<\/head>/i.test(htmlText)) {
+            htmlText = htmlText.replace(/<\/head>/i, `${manifestLink}\n</head>`);
+          } else {
+            htmlText = manifestLink + '\n' + htmlText;
+          }
+
+          if (/<body[^>]*>/i.test(htmlText)) {
+            htmlText = htmlText.replace(/<body[^>]*>/i, (match) => `${match}\n${installBar}`);
+          } else {
+            htmlText = installBar + '\n' + htmlText;
+          }
         }
 
-        if (htmlText.includes('</body>')) {
-          htmlText = htmlText.replace('</body>', `${installBar}\n</body>`);
-        } else {
-          htmlText = htmlText + '\n' + installBar;
-        }
+        const badgeText = shortName.slice(0, 2).toUpperCase();
+        const icon192 = generatePngIcon(192, themeColor, badgeText);
+        const icon512 = generatePngIcon(512, themeColor, badgeText);
 
         const manifestData = {
           name: appName,
@@ -143,11 +191,8 @@
           background_color: '#ffffff',
           theme_color: themeColor,
           icons: [
-            {
-              src: `data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 192 192'><rect width='192' height='192' fill='${encodeURIComponent(themeColor)}'/><text x='50%' y='54%' font-size='80' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='middle'>${encodeURIComponent(shortName.slice(0, 2).toUpperCase())}</text></svg>`,
-              sizes: '192x192',
-              type: 'image/svg+xml'
-            }
+            { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any' }
           ]
         };
 
