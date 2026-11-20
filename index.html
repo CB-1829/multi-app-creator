@@ -493,24 +493,29 @@
       if (!/<html/i.test(htmlText)) {
         return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${appName}</title>${manifestLink}${manifestGuardScript}</head><body>${installGate}${htmlText}</body></html>`;
       }
-      let out = htmlText;
-      if (/<\/head>/i.test(out)) {
-        out = out.replace(/<\/head>/i, `${manifestLink}\n${manifestGuardScript}\n</head>`);
+
+      if (/<head[^>]*>/i.test(htmlText)) {
+        htmlText = htmlText.replace(/<head([^>]*)>/i, `<head$1>\n${manifestLink}\n${manifestGuardScript}`);
       } else {
-        out = manifestLink + '\n' + manifestGuardScript + '\n' + out;
+        htmlText = `${manifestLink}\n${manifestGuardScript}\n` + htmlText;
       }
-      if (/<body[^>]*>/i.test(out)) {
-        out = out.replace(/<body[^>]*>/i, (match) => `${match}\n${installGate}`);
+
+      if (/<body[^>]*>/i.test(htmlText)) {
+        htmlText = htmlText.replace(/<body([^>]*)>/i, `<body$1>\n${installGate}`);
       } else {
-        out = installGate + '\n' + out;
+        htmlText = `${htmlText}\n${installGate}`;
       }
-      return out;
+
+      return htmlText;
     }
 
-    // Build manifest JSON (either auto-generated or custom user-provided)
+    // Build a Web App Manifest object using PNG icons generated from shortName and themeColor
     function buildManifestObject(rawId, appName, shortName, themeColor, appScope) {
-      const badgeText = shortName.slice(0, 2).toUpperCase();
-      const defaultManifest = {
+      const badgeText = (shortName || rawId || 'PW').slice(0, 2).toUpperCase();
+      const icon192 = generatePngIcon(192, themeColor, badgeText);
+      const icon512 = generatePngIcon(512, themeColor, badgeText);
+
+      return {
         name: appName,
         short_name: shortName,
         id: encodeURI(appScope),
@@ -520,26 +525,32 @@
         background_color: '#ffffff',
         theme_color: themeColor,
         icons: [
-          { src: generatePngIcon(192, themeColor, badgeText), sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: generatePngIcon(512, themeColor, badgeText), sizes: '512x512', type: 'image/png', purpose: 'any' }
+          {
+            src: icon192,
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: icon512,
+            sizes: '512x512',
+            type: 'image/png'
+          }
         ]
       };
+    }
 
-      if (manifestSourceSelect.value === 'custom') {
-        const rawJson = document.getElementById('customManifestText').value.trim();
-        if (!rawJson) throw new Error('Custom manifest mode is selected, but manifest JSON is empty.');
-        const parsed = JSON.parse(rawJson);
-        // Ensure required routing fields remain scoped to this virtual app unless explicitly provided
-        return {
-          ...defaultManifest,
-          ...parsed,
-          id: parsed.id || encodeURI(appScope),
-          start_url: parsed.start_url || encodeURI(appScope),
-          scope: parsed.scope || encodeURI(appScope)
-        };
-      }
-
-      return defaultManifest;
+    // Detect whether the PWA itself declares a lock/block on manifest edits
+    function detectPwaManifestLock(htmlText = '', manifestObj = null) {
+      const hasMetaLock = /<meta\b[^>]*name=["']?pwa-block-manifest(?:-edits)?["']?[^>]*content=["']?true["']?/i.test(htmlText);
+      const hasScriptLock = /blockManifestEdits\s*[:=]\s*true|data-block-manifest=["']?true["']?/i.test(htmlText);
+      const hasManifestLock = Boolean(
+        manifestObj && (
+          manifestObj.block_manifest_edits === true ||
+          manifestObj.lock_manifest === true ||
+          (manifestObj.pwa_controls && manifestObj.pwa_controls.block_manifest_edits === true)
+        )
+      );
+      return hasMetaLock || hasScriptLock || hasManifestLock;
     }
 
     // Check if manifest.lock is set to "true" for a given PWA ID
@@ -563,19 +574,29 @@
         const cache = await caches.open(CACHE_NAME);
         const fullOrigin = window.location.origin;
 
-        const blocked = await isManifestBlocked(cache, lockUrl);
-        document.getElementById('editBlockManifestCheckbox').checked = blocked;
-
         const manifestRes = await cache.match(`${fullOrigin}${manifestUrl}`);
         if (!manifestRes) {
           statusEl.textContent = `No cached manifest found for ID "${rawId}".`;
           return;
         }
         const jsonObj = await manifestRes.json();
+
+        // Respect lock if declared inside the PWA's manifest or manifest.lock
+        const pwaLocked = detectPwaManifestLock('', jsonObj);
+        const blocked = (await isManifestBlocked(cache, lockUrl)) || pwaLocked;
+        if (pwaLocked) {
+          await cache.put(`${fullOrigin}${lockUrl}`, new Response('true', { headers: { 'Content-Type': 'text/plain' } }));
+        }
+        await refreshSelectedAppState();
+
+        if (blocked) {
+          document.getElementById('editManifestText').value = '';
+          statusEl.textContent = `BLOCKED: PWA "${rawId}" blocks manifest edits.`;
+          return;
+        }
+
         document.getElementById('editManifestText').value = JSON.stringify(jsonObj, null, 2);
-        statusEl.textContent = blocked
-          ? `Loaded manifest for "${rawId}" (WARNING: Manifest editing is BLOCKED/LOCKED for this app!).`
-          : `Loaded manifest for "${rawId}". You may edit and save it.`;
+        statusEl.textContent = `Loaded manifest for "${rawId}". You may edit and save it.`;
       } catch (err) {
         statusEl.textContent = 'Load Manifest Error: ' + err.message;
       }
@@ -592,13 +613,18 @@
         const cache = await caches.open(CACHE_NAME);
         const fullOrigin = window.location.origin;
 
-        if (await isManifestBlocked(cache, lockUrl)) {
-          statusEl.textContent = `BLOCKED: Manifest editing is locked for "${rawId}". Changes were rejected.`;
-          return;
-        }
-
         const editedText = document.getElementById('editManifestText').value.trim();
         const parsed = JSON.parse(editedText); // Validate JSON syntax
+
+        const pwaLocked = detectPwaManifestLock('', parsed);
+        if ((await isManifestBlocked(cache, lockUrl)) || pwaLocked) {
+          if (pwaLocked) {
+            await cache.put(`${fullOrigin}${lockUrl}`, new Response('true', { headers: { 'Content-Type': 'text/plain' } }));
+            await refreshSelectedAppState();
+          }
+          statusEl.textContent = `BLOCKED: Manifest editing is blocked by PWA "${rawId}". Changes were rejected.`;
+          return;
+        }
 
         await cache.put(
           `${fullOrigin}${manifestUrl}`,
@@ -607,94 +633,114 @@
           })
         );
 
-        const shouldBlockNow = document.getElementById('editBlockManifestCheckbox').checked;
-        await cache.put(
-          `${fullOrigin}${lockUrl}`,
-          new Response(shouldBlockNow ? 'true' : 'false', {
-            headers: { 'Content-Type': 'text/plain' }
-          })
-        );
-
-        statusEl.textContent = `Saved updated manifest for "${rawId}"! (Manifest Blocked: ${shouldBlockNow})`;
+        statusEl.textContent = `Saved updated manifest for "${rawId}"!`;
         await refreshSelectedAppState();
       } catch (err) {
         statusEl.textContent = 'Save Edited Manifest Error: ' + err.message;
       }
     });
 
-    // --- DEVELOPER MODE HANDLER (Verifies dev.file === "true" in Cache + showDirectoryPicker broadcast) ---
-    document.getElementById('broadcastFolderBtn').addEventListener('click', async () => {
+    // Shared helper to broadcast a local device folder in DEVELOPER mode (replaces file upload)
+    async function broadcastLocalFolderForApp(rawId) {
+      await refreshSelectedAppState();
+      if (!modeState.devUnlocked) {
+        statusEl.textContent = 'ACCESS DENIED: dev.file must be set to "true" in Cache Storage.';
+        return;
+      }
+      if (!rawId) {
+        statusEl.textContent = 'Enter a Custom URL ID first.';
+        return;
+      }
+      if (!('showDirectoryPicker' in window)) {
+        statusEl.textContent = 'Your browser does not support showDirectoryPicker() for live folder broadcasting.';
+        return;
+      }
+
+      const { appScope, manifestUrl, lockUrl } = getAppPaths(rawId);
+      const cache = await caches.open(CACHE_NAME);
+      const fullOrigin = window.location.origin;
+
+      // Prompt user to select local device folder to broadcast (replaces upload)
+      const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+
+      // Inspect folder's index.html (if present) so the PWA itself can declare manifest blocking
+      let pwaBlocked = await isManifestBlocked(cache, lockUrl);
+      let rawEntryHtml = '<div id="dev-live-root"></div>';
       try {
-        await refreshSelectedAppState();
-        if (!modeState.devUnlocked) {
-          statusEl.textContent = 'ACCESS DENIED: dev.file must be set to "true" in Cache Storage.';
-          return;
+        const indexHandle = await dirHandle.getFileHandle('index.html');
+        const indexFile = await indexHandle.getFile();
+        rawEntryHtml = await indexFile.text();
+        if (detectPwaManifestLock(rawEntryHtml)) {
+          pwaBlocked = true;
         }
+      } catch (_) {
+        // Optional index.html inside broadcasted folder
+      }
 
-        const rawId = getCleanId();
-        if (!rawId) {
-          statusEl.textContent = 'Enter a Custom URL ID first.';
-          return;
-        }
-        const appName = document.getElementById('appName').value.trim() || rawId;
-        const shortName = document.getElementById('shortName').value.trim() || appName;
-        const themeColor = document.getElementById('themeColor').value;
-        const { appScope, manifestUrl, lockUrl } = getAppPaths(rawId);
+      const appName = (!pwaBlocked && modeState.edits && document.getElementById('appName').value.trim())
+        ? document.getElementById('appName').value.trim()
+        : rawId;
+      const shortName = (!pwaBlocked && modeState.edits && document.getElementById('shortName').value.trim())
+        ? document.getElementById('shortName').value.trim()
+        : appName;
+      const themeColor = (!pwaBlocked && modeState.edits)
+        ? document.getElementById('themeColor').value
+        : '#2563eb';
 
-        const cache = await caches.open(CACHE_NAME);
-        const fullOrigin = window.location.origin;
+      let manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
+      if (detectPwaManifestLock(rawEntryHtml, manifestData)) {
+        pwaBlocked = true;
+      }
 
-        if (!('showDirectoryPicker' in window)) {
-          statusEl.textContent = 'Your browser does not support showDirectoryPicker() for live folder broadcasting.';
-          return;
-        }
-
-        // Prompt user to select local device folder to broadcast
-        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-
-        // Ensure manifest exists (unless blocked) so the broadcasted folder is installable as a PWA
-        const blocked = await isManifestBlocked(cache, lockUrl);
-        const blockFlag = blocked || document.getElementById('blockManifestCheckbox').checked;
-
-        if (!blocked) {
-          const manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
+      if (!pwaBlocked) {
+        await cache.put(
+          `${fullOrigin}${manifestUrl}`,
+          new Response(JSON.stringify(manifestData, null, 2), {
+            headers: { 'Content-Type': 'application/manifest+json' }
+          })
+        );
+      } else {
+        const existingManifest = await cache.match(`${fullOrigin}${manifestUrl}`);
+        if (!existingManifest) {
           await cache.put(
             `${fullOrigin}${manifestUrl}`,
             new Response(JSON.stringify(manifestData, null, 2), {
               headers: { 'Content-Type': 'application/manifest+json' }
             })
           );
-          await cache.put(
-            `${fullOrigin}${lockUrl}`,
-            new Response(blockFlag ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
-          );
         }
+      }
 
-        // Send directory handle to Service Worker to live-broadcast
-        const reg = await navigator.serviceWorker.ready;
-        if (reg.active) {
-          reg.active.postMessage({
-            type: 'SET_DEV_FOLDER',
-            appScope,
-            handle: dirHandle
-          });
-        }
+      await cache.put(
+        `${fullOrigin}${lockUrl}`,
+        new Response(pwaBlocked ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
+      );
+      await ensureDefaultDevFiles(rawId);
 
-        // Cache fallback wrapper index.html
-        const devIndexHtml = injectPwaWrapper(
-          `<div id="dev-live-root"></div>`,
-          appName,
-          manifestUrl,
-          blockFlag
-        );
-        await cache.put(
-          `${fullOrigin}${appScope}index.html`,
-          new Response(devIndexHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-        );
+      const reg = await navigator.serviceWorker.ready;
+      if (reg.active) {
+        reg.active.postMessage({
+          type: 'SET_DEV_FOLDER',
+          appScope,
+          handle: dirHandle
+        });
+      }
 
-        await refreshSelectedAppState();
-        statusEl.textContent = `DEVELOPER BROADCAST ACTIVE! Streaming "${dirHandle.name}" to ${appScope}...`;
-        window.open(encodeURI(appScope), '_blank');
+      const devIndexHtml = injectPwaWrapper(rawEntryHtml, appName, manifestUrl, pwaBlocked);
+      await cache.put(
+        `${fullOrigin}${appScope}index.html`,
+        new Response(devIndexHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      );
+
+      await refreshSelectedAppState();
+      statusEl.textContent = `DEVELOPER BROADCAST ACTIVE! Streaming "${dirHandle.name}" to ${appScope}...`;
+      window.open(encodeURI(appScope), '_blank');
+    }
+
+    // --- DEVELOPER MODE HANDLER (Verifies dev.file === "true" in Cache + showDirectoryPicker broadcast) ---
+    document.getElementById('broadcastFolderBtn').addEventListener('click', async () => {
+      try {
+        await broadcastLocalFolderForApp(getCleanId());
       } catch (err) {
         statusEl.textContent = 'Developer Broadcast Error: ' + err.message;
       }
@@ -726,7 +772,9 @@
         htm: 'text/html; charset=utf-8',
         css: 'text/css; charset=utf-8',
         js: 'application/javascript; charset=utf-8',
+        mjs: 'application/javascript; charset=utf-8',
         json: 'application/json; charset=utf-8',
+        webmanifest: 'application/manifest+json; charset=utf-8',
         png: 'image/png',
         jpg: 'image/jpeg',
         jpeg: 'image/jpeg',
@@ -734,21 +782,27 @@
         svg: 'image/svg+xml',
         webp: 'image/webp',
         ico: 'image/x-icon',
-        txt: 'text/plain; charset=utf-8'
+        wasm: 'application/wasm',
+        txt: 'text/plain; charset=utf-8',
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        mp4: 'video/mp4'
       };
       return map[ext] || 'application/octet-stream';
     }
 
-    // Main Save & Install Handler (Handles HTML and FULL modes + Manifest Blocking)
+    // Main Save & Install Handler (Handles DEVELOPER folder broadcast, HTML, and FULL modes)
     saveBtn.addEventListener('click', async () => {
       try {
         const rawId = getCleanId();
-        const appName = document.getElementById('appName').value.trim() || rawId;
-        const shortName = document.getElementById('shortName').value.trim() || appName;
-        const themeColor = document.getElementById('themeColor').value;
-
         if (!rawId) {
           statusEl.textContent = 'Please enter a Custom URL ID.';
+          return;
+        }
+
+        // When DEVELOPER mode is active, folder broadcast replaces file upload
+        if (modeState.dev && modeState.devUnlocked) {
+          await broadcastLocalFolderForApp(rawId);
           return;
         }
 
@@ -756,29 +810,12 @@
         const cache = await caches.open(CACHE_NAME);
         const fullOrigin = window.location.origin;
 
-        // Check manifest lock before modifying manifest.json
-        const manifestBlocked = await isManifestBlocked(cache, lockUrl);
-        const blockNow = manifestBlocked || document.getElementById('blockManifestCheckbox').checked;
-
-        if (!manifestBlocked) {
-          const manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
-          await cache.put(
-            `${fullOrigin}${manifestUrl}`,
-            new Response(JSON.stringify(manifestData, null, 2), {
-              headers: { 'Content-Type': 'application/manifest+json' }
-            })
-          );
-
-          await cache.put(
-            `${fullOrigin}${lockUrl}`,
-            new Response(blockNow ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
-          );
-        } else {
-          statusEl.textContent = `Note: Manifest for "${rawId}" is BLOCKED/LOCKED — keeping existing manifest.json.\n`;
-        }
-
         // Ensure dev.file is initialized to "false" by default for this app
         await ensureDefaultDevFiles(rawId);
+
+        let manifestBlocked = await isManifestBlocked(cache, lockUrl);
+        let rawEntryHtml = '';
+        let fullSourceFiles = []; // { relPath, text, blob }
 
         if (modeState.base === 'HTML') {
           // HTML MODE: Single .html file only
@@ -787,13 +824,7 @@
             statusEl.textContent = 'HTML Mode requires selecting an .html file.';
             return;
           }
-          const rawHtml = await fileInput.files[0].text();
-          const wrappedHtml = injectPwaWrapper(rawHtml, appName, manifestUrl, blockNow);
-
-          await cache.put(
-            `${fullOrigin}${appScope}index.html`,
-            new Response(wrappedHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-          );
+          rawEntryHtml = await fileInput.files[0].text();
         } else {
           // FULL MODE: app.zip OR app/ folder
           let foundIndex = false;
@@ -821,20 +852,10 @@
 
               if (relPath.toLowerCase() === 'index.html') {
                 foundIndex = true;
-                const rawHtml = await zip.files[entryName].async('text');
-                const wrappedHtml = injectPwaWrapper(rawHtml, appName, manifestUrl, blockNow);
-                await cache.put(
-                  `${fullOrigin}${appScope}index.html`,
-                  new Response(wrappedHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-                );
-              } else if (relPath.toLowerCase() === 'manifest.json' && manifestBlocked) {
-                continue; // Respect manifest lock
+                rawEntryHtml = await zip.files[entryName].async('text');
               } else {
                 const blob = await zip.files[entryName].async('blob');
-                await cache.put(
-                  `${fullOrigin}${appScope}${relPath}`,
-                  new Response(blob, { headers: { 'Content-Type': inferContentType(relPath) } })
-                );
+                fullSourceFiles.push({ relPath, blob });
               }
             }
           } else {
@@ -854,19 +875,9 @@
 
               if (relPath.toLowerCase() === 'index.html') {
                 foundIndex = true;
-                const rawHtml = await file.text();
-                const wrappedHtml = injectPwaWrapper(rawHtml, appName, manifestUrl, blockNow);
-                await cache.put(
-                  `${fullOrigin}${appScope}index.html`,
-                  new Response(wrappedHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-                );
-              } else if (relPath.toLowerCase() === 'manifest.json' && manifestBlocked) {
-                continue; // Respect manifest lock
+                rawEntryHtml = await file.text();
               } else {
-                await cache.put(
-                  `${fullOrigin}${appScope}${relPath}`,
-                  new Response(file, { headers: { 'Content-Type': inferContentType(relPath) } })
-                );
+                fullSourceFiles.push({ relPath, blob: file });
               }
             }
           }
@@ -874,6 +885,63 @@
           if (!foundIndex) {
             statusEl.textContent = 'Error: FULL mode requires an index.html file at the root of the ZIP or folder.';
             return;
+          }
+        }
+
+        const appName = (!manifestBlocked && modeState.edits && document.getElementById('appName').value.trim())
+          ? document.getElementById('appName').value.trim()
+          : rawId;
+        const shortName = (!manifestBlocked && modeState.edits && document.getElementById('shortName').value.trim())
+          ? document.getElementById('shortName').value.trim()
+          : appName;
+        const themeColor = (!manifestBlocked && modeState.edits)
+          ? document.getElementById('themeColor').value
+          : '#2563eb';
+
+        let manifestData = buildManifestObject(rawId, appName, shortName, themeColor, appScope);
+
+        // Allow the PWA itself to declare manifest blocking (via HTML meta/script or manifest flag)
+        if (detectPwaManifestLock(rawEntryHtml, manifestData)) {
+          manifestBlocked = true;
+        }
+
+        await cache.put(
+          `${fullOrigin}${lockUrl}`,
+          new Response(manifestBlocked ? 'true' : 'false', { headers: { 'Content-Type': 'text/plain' } })
+        );
+
+        if (!manifestBlocked) {
+          await cache.put(
+            `${fullOrigin}${manifestUrl}`,
+            new Response(JSON.stringify(manifestData, null, 2), {
+              headers: { 'Content-Type': 'application/manifest+json' }
+            })
+          );
+        } else {
+          const existingManifest = await cache.match(`${fullOrigin}${manifestUrl}`);
+          if (!existingManifest) {
+            await cache.put(
+              `${fullOrigin}${manifestUrl}`,
+              new Response(JSON.stringify(manifestData, null, 2), {
+                headers: { 'Content-Type': 'application/manifest+json' }
+              })
+            );
+          }
+        }
+
+        const wrappedHtml = injectPwaWrapper(rawEntryHtml, appName, manifestUrl, manifestBlocked);
+        await cache.put(
+          `${fullOrigin}${appScope}index.html`,
+          new Response(wrappedHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+        );
+
+        if (modeState.base === 'FULL') {
+          for (const item of fullSourceFiles) {
+            if (item.relPath.toLowerCase() === 'manifest.json' && manifestBlocked) continue;
+            await cache.put(
+              `${fullOrigin}${appScope}${item.relPath}`,
+              new Response(item.blob, { headers: { 'Content-Type': inferContentType(item.relPath) } })
+            );
           }
         }
 
